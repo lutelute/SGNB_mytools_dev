@@ -16,7 +16,24 @@
 - **実行方法**: 
   - インストール: `cd worktree-manager/src && ./install.sh`
   - 使用: `worktree-manager [コマンド]`, `claude-launcher [オプション]`
+  - 単体クローン: `./tool-manager/src/quick-clone.sh worktree-manager`
 - **依存関係**: Git, Claude CLI, Bash
+- **状態**: 完成
+
+### Tool Manager
+- **作成日**: 2025-07-05
+- **言語**: Bash
+- **概要**: ツール単位でのGit管理と独立リポジトリの作成・管理を行うツールセット
+- **機能**: 
+  - ツール用独立リポジトリの作成
+  - ツール単体のクローン
+  - 変更の同期
+  - 簡単クローン機能
+- **ディレクトリ**: `./tool-manager/`
+- **実行方法**: 
+  - 高度な管理: `./tool-manager/src/tool-manager.sh [コマンド]`
+  - 簡単クローン: `./tool-manager/src/quick-clone.sh [ツール名]`
+- **依存関係**: Git, GitHub CLI, Bash
 - **状態**: 完成
 
 ---
@@ -50,6 +67,7 @@
 
 ### 自動化ツール
 - Worktree Manager
+- Tool Manager
 
 ### ユーティリティ
 - （未追加）
@@ -63,4 +81,5 @@
 
 - 2025-07-05: ツール一覧ファイル作成
 - 2025-07-05: Worktree Manager 追加（Git worktree + Claude実行自動化）
+- 2025-07-05: Tool Manager 追加（ツール単位でのGit管理と独立リポジトリ作成）
 - （今後のツール追加履歴がここに記録されます）
