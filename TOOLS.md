@@ -36,6 +36,27 @@
 - **依存関係**: Git, GitHub CLI, Bash
 - **状態**: 完成
 
+### PDF Processor
+- **作成日**: 2025-07-16
+- **言語**: Bash, Python
+- **概要**: フォルダ内のPDFファイルを一括処理する多機能ツール
+- **機能**: 
+  - PDFファイルの一覧表示（サブフォルダ対応）
+  - PDFファイルの詳細情報表示（ページ数、サイズ等）
+  - PDFファイルのテキスト抽出（サブフォルダ構造保持）
+  - PDFファイルのマージ（全体統合）
+  - サブフォルダごとのPDFマージ（フォルダ単位）
+  - PDFファイルの一括印刷
+  - GUIモード（macOSネイティブダイアログ）
+  - 既存ファイルスキップ機能
+- **ディレクトリ**: `./pdf-processor/`
+- **実行方法**: 
+  - コマンドライン: `./pdf-processor/pdf-processor.sh [command] [options]`
+  - GUIモード: `./pdf-processor/pdf-processor.sh gui`
+  - スキップオプション: `--skip-existing`, `--force`
+- **依存関係**: Python 3.7+, PyPDF2, macOS (GUI機能)
+- **状態**: 完成
+
 ---
 
 ## ツール追加テンプレート
@@ -63,14 +84,14 @@
 - （未追加）
 
 ### データ処理ツール
-- （未追加）
+- PDF Processor
 
 ### 自動化ツール
 - Worktree Manager
 - Tool Manager
 
 ### ユーティリティ
-- （未追加）
+- PDF Processor
 
 ### 学習・実験用
 - （未追加）
@@ -82,4 +103,5 @@
 - 2025-07-05: ツール一覧ファイル作成
 - 2025-07-05: Worktree Manager 追加（Git worktree + Claude実行自動化）
 - 2025-07-05: Tool Manager 追加（ツール単位でのGit管理と独立リポジトリ作成）
+- 2025-07-16: PDF Processor 追加（PDF一括処理ツール、GUI対応、サブフォルダ処理）
 - （今後のツール追加履歴がここに記録されます）
