@@ -35,18 +35,22 @@ show_help() {
     echo "  $0 info [directory]     - PDFファイルの基本情報を表示"
     echo "  $0 extract [directory]  - PDFファイルのテキストを抽出"
     echo "  $0 merge [directory] [output.pdf] - PDFファイルをマージ"
+    echo "  $0 merge-by-folder [directory] - サブフォルダごとにPDFをマージ"
     echo "  $0 print [directory]    - フォルダ内のPDFファイルを一括印刷"
     echo "  $0 gui                  - GUIモードで実行"
     echo "  $0 help                 - このヘルプを表示"
     echo ""
     echo "オプション:"
     echo "  directory               - 処理対象のディレクトリ（デフォルト: 現在のディレクトリ）"
+    echo "  --skip-existing         - 既存ファイルをスキップ"
+    echo "  --force                 - 既存ファイルを上書き"
     echo ""
     echo "例:"
     echo "  $0 list ./documents"
     echo "  $0 info"
     echo "  $0 extract ./pdfs"
     echo "  $0 merge ./pdfs merged.pdf"
+    echo "  $0 merge-by-folder ./pdfs --skip-existing"
     echo "  $0 print ./pdfs"
     echo "  $0 gui                  - GUIで操作"
 }
@@ -225,6 +229,7 @@ except Exception as e:
 merge_pdfs() {
     local dir="${1:-.}"
     local output_file="${2:-merged.pdf}"
+    local skip_existing="${3:-false}"
     
     if [ ! -d "$dir" ]; then
         log_error "ディレクトリ '$dir' が存在しません"
@@ -233,6 +238,22 @@ merge_pdfs() {
     
     if ! check_pdf_files "$dir" "true"; then
         return 1
+    fi
+    
+    # 既存ファイルの確認
+    if [ -f "$output_file" ]; then
+        if [ "$skip_existing" = "true" ]; then
+            log_info "既存ファイルをスキップします: $output_file"
+            return 0
+        elif [ "$skip_existing" != "force" ]; then
+            log_warning "既存ファイルが存在します: $output_file"
+            echo -n "上書きしますか？ (y/N): "
+            read -r response
+            if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                log_info "処理をキャンセルしました"
+                return 0
+            fi
+        fi
     fi
     
     log_info "PDFファイルをマージ中（サブフォルダも含む）..."
@@ -298,6 +319,168 @@ except Exception as e:
     fi
     
     log_success "PDFマージが完了しました: $output_file"
+}
+
+# サブフォルダごとのPDFマージ
+merge_pdfs_by_folder() {
+    local dir="${1:-.}"
+    local skip_existing="${2:-false}"
+    
+    if [ ! -d "$dir" ]; then
+        log_error "ディレクトリ '$dir' が存在しません"
+        return 1
+    fi
+    
+    if ! check_pdf_files "$dir" "true"; then
+        return 1
+    fi
+    
+    log_info "サブフォルダごとにPDFファイルをマージ中..."
+    
+    # 出力ディレクトリを作成
+    local output_dir="$dir/merged_by_folder"
+    mkdir -p "$output_dir"
+    
+    # Pythonを使ってサブフォルダごとのPDFマージ
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "
+import sys
+import os
+from pathlib import Path
+from collections import defaultdict
+try:
+    import PyPDF2
+    
+    base_dir = Path('$dir')
+    output_dir = Path('$output_dir')
+    
+    # サブフォルダごとにPDFファイルを分類
+    folders_with_pdfs = defaultdict(list)
+    
+    # ルートディレクトリのPDFファイルを収集
+    root_pdfs = []
+    for pdf_file in base_dir.glob('*.pdf'):
+        root_pdfs.append(pdf_file)
+    
+    if root_pdfs:
+        folders_with_pdfs['root'] = sorted(root_pdfs)
+    
+    # サブフォルダのPDFファイルを収集
+    for root, dirs, files in os.walk(base_dir):
+        if root == str(base_dir):
+            continue  # ルートディレクトリはスキップ
+            
+        folder_path = Path(root)
+        pdf_files = []
+        
+        for file in files:
+            if file.lower().endswith('.pdf'):
+                pdf_files.append(folder_path / file)
+        
+        if pdf_files:
+            # 相対パスを取得してフォルダ名として使用
+            rel_path = folder_path.relative_to(base_dir)
+            folder_name = str(rel_path).replace('/', '_')
+            folders_with_pdfs[folder_name] = sorted(pdf_files)
+    
+    if not folders_with_pdfs:
+        print('PDFファイルが見つかりません')
+        sys.exit(1)
+    
+    total_folders = len(folders_with_pdfs)
+    processed_folders = 0
+    skipped_folders = 0
+    
+    print(f'処理対象フォルダ: {total_folders} 個')
+    print()
+    
+    # 各フォルダごとにマージ処理
+    for folder_name, pdf_files in folders_with_pdfs.items():
+        if not pdf_files:
+            continue
+            
+        processed_folders += 1
+        
+        # 出力ファイル名を決定
+        if folder_name == 'root':
+            output_filename = 'merged_root.pdf'
+            display_name = 'ルートディレクトリ'
+        else:
+            output_filename = f'merged_{folder_name}.pdf'
+            display_name = folder_name.replace('_', '/')
+        
+        output_file = output_dir / output_filename
+        
+        print(f'[{processed_folders}/{total_folders}] {display_name}')
+        print(f'  PDFファイル数: {len(pdf_files)} 個')
+        print(f'  出力ファイル: {output_file}')
+        
+        # 既存ファイルのチェック
+        if output_file.exists():
+            if '$skip_existing' == 'true':
+                print(f'  ⏭️ スキップ: 既存ファイルが存在します')
+                skipped_folders += 1
+                print()
+                continue
+            elif '$skip_existing' != 'force':
+                print(f'  ⚠️ 既存ファイルが存在します')
+                # 非対話モードでは上書きしない
+                if not sys.stdin.isatty():
+                    print(f'  ⏭️ スキップ: 非対話モードのため既存ファイルをスキップします')
+                    skipped_folders += 1
+                    print()
+                    continue
+        
+        # マージ処理
+        merger = PyPDF2.PdfMerger()
+        
+        for pdf_file in pdf_files:
+            try:
+                rel_path = pdf_file.relative_to(base_dir)
+                print(f'    追加: {rel_path}')
+                merger.append(str(pdf_file))
+            except Exception as e:
+                print(f'    ⚠️ スキップ: {pdf_file.name} - {e}')
+                continue
+        
+        # マージ結果を保存
+        try:
+            with open(output_file, 'wb') as output:
+                merger.write(output)
+            
+            # ファイルサイズを表示
+            file_size = output_file.stat().st_size
+            if file_size > 1024 * 1024:
+                size_str = f'{file_size / (1024 * 1024):.1f} MB'
+            else:
+                size_str = f'{file_size / 1024:.1f} KB'
+            
+            print(f'    ✓ 完了: {size_str}')
+            
+        except Exception as e:
+            print(f'    ✗ エラー: {e}')
+        
+        merger.close()
+        print()
+    
+    print(f'✓ 全処理完了: {processed_folders - skipped_folders} 個のフォルダを処理しました')
+    if skipped_folders > 0:
+        print(f'⏭️ スキップ: {skipped_folders} 個のフォルダ')
+    print(f'✓ 出力ディレクトリ: {output_dir}')
+    
+except ImportError:
+    print('✗ PyPDF2ライブラリが必要です: pip install PyPDF2')
+    sys.exit(1)
+except Exception as e:
+    print(f'✗ エラー: {e}')
+    sys.exit(1)
+"
+    else
+        log_error "Python3が必要です"
+        return 1
+    fi
+    
+    log_success "サブフォルダごとのPDFマージが完了しました: $output_dir/"
 }
 
 # PDF一括印刷
@@ -647,7 +830,7 @@ gui_select_printer() {
 # GUIで操作選択
 gui_select_operation() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        local operations=("\"一覧表示\"" "\"詳細情報\"" "\"テキスト抽出\"" "\"マージ\"" "\"印刷\"")
+        local operations=("\"一覧表示\"" "\"詳細情報\"" "\"テキスト抽出\"" "\"マージ\"" "\"フォルダ別マージ\"" "\"印刷\"")
         local operation_list=$(IFS=,; echo "${operations[*]}")
         
         osascript -e "tell application \"System Events\" to return (choose from list {$operation_list} with prompt \"実行する操作を選択してください\")"
@@ -757,9 +940,49 @@ gui_mode() {
                 return 0
             fi
             
+            # スキップオプションの選択
+            local skip_option
+            skip_option=$(osascript -e 'tell application "System Events" to return (choose from list {"既存ファイルに確認", "既存ファイルをスキップ", "既存ファイルを上書き"} with prompt "既存ファイルがある場合の処理を選択してください")')
+            
+            if [ -z "$skip_option" ] || [ "$skip_option" = "false" ]; then
+                log_info "処理がキャンセルされました"
+                return 0
+            fi
+            
+            local skip_existing="false"
+            case "$skip_option" in
+                "既存ファイルをスキップ") skip_existing="true" ;;
+                "既存ファイルを上書き") skip_existing="force" ;;
+            esac
+            
             gui_show_result "PDFマージ" "処理を開始します..." "info"
-            merge_pdfs "$selected_folder" "$output_file"
+            merge_pdfs "$selected_folder" "$output_file" "$skip_existing"
             gui_show_result "完了" "PDFマージが完了しました。$output_file が作成されました。" "info"
+            ;;
+        "フォルダ別マージ")
+            if ! check_dependencies; then
+                gui_show_result "エラー" "PyPDF2ライブラリが必要です。pip install PyPDF2 を実行してください。" "error"
+                return 1
+            fi
+            
+            # スキップオプションの選択
+            local skip_option
+            skip_option=$(osascript -e 'tell application "System Events" to return (choose from list {"既存ファイルに確認", "既存ファイルをスキップ", "既存ファイルを上書き"} with prompt "既存ファイルがある場合の処理を選択してください")')
+            
+            if [ -z "$skip_option" ] || [ "$skip_option" = "false" ]; then
+                log_info "処理がキャンセルされました"
+                return 0
+            fi
+            
+            local skip_existing="false"
+            case "$skip_option" in
+                "既存ファイルをスキップ") skip_existing="true" ;;
+                "既存ファイルを上書き") skip_existing="force" ;;
+            esac
+            
+            gui_show_result "フォルダ別PDFマージ" "処理を開始します..." "info"
+            merge_pdfs_by_folder "$selected_folder" "$skip_existing"
+            gui_show_result "完了" "フォルダ別PDFマージが完了しました。merged_by_folder フォルダを確認してください。" "info"
             ;;
         "印刷")
             # プリンター選択
@@ -838,33 +1061,87 @@ gui_print_pdfs() {
     fi
 }
 
+# 引数解析
+parse_args() {
+    local command=""
+    local directory=""
+    local output_file=""
+    local skip_mode="ask"  # ask, skip, force
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --skip-existing)
+                skip_mode="skip"
+                shift
+                ;;
+            --force)
+                skip_mode="force"
+                shift
+                ;;
+            list|info|extract|merge|merge-by-folder|print|gui|debug-print|deps|requirements|help|--help|-h)
+                command="$1"
+                shift
+                ;;
+            *)
+                if [ -z "$directory" ]; then
+                    directory="$1"
+                elif [ -z "$output_file" ]; then
+                    output_file="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+    
+    echo "$command|$directory|$output_file|$skip_mode"
+}
+
 # メイン処理
 main() {
-    case "$1" in
+    local parsed=$(parse_args "$@")
+    IFS='|' read -r command directory output_file skip_mode <<< "$parsed"
+    
+    # デフォルト値設定
+    directory="${directory:-.}"
+    output_file="${output_file:-merged.pdf}"
+    
+    # スキップモードの変換
+    local skip_existing="false"
+    case "$skip_mode" in
+        "skip") skip_existing="true" ;;
+        "force") skip_existing="force" ;;
+    esac
+    
+    case "$command" in
         "list")
-            list_pdfs "$2"
+            list_pdfs "$directory"
             ;;
         "info")
-            show_pdf_info "$2"
+            show_pdf_info "$directory"
             ;;
         "extract")
             if check_dependencies; then
-                extract_pdf_text "$2"
+                extract_pdf_text "$directory"
             fi
             ;;
         "merge")
             if check_dependencies; then
-                merge_pdfs "$2" "$3"
+                merge_pdfs "$directory" "$output_file" "$skip_existing"
+            fi
+            ;;
+        "merge-by-folder")
+            if check_dependencies; then
+                merge_pdfs_by_folder "$directory" "$skip_existing"
             fi
             ;;
         "print")
-            print_pdfs "$2"
+            print_pdfs "$directory"
             ;;
         "gui")
             gui_mode
             ;;
         "debug-print")
-            debug_print_system "$2"
+            debug_print_system "$directory"
             ;;
         "deps")
             check_dependencies
@@ -872,16 +1149,11 @@ main() {
         "requirements")
             generate_requirements
             ;;
-        "help"|"--help"|"-h")
+        "help"|"--help"|"-h"|"")
             show_help
-            ;;
-        "")
-            log_error "コマンドを指定してください"
-            show_help
-            exit 1
             ;;
         *)
-            log_error "不明なコマンド: $1"
+            log_error "不明なコマンド: $command"
             show_help
             exit 1
             ;;
